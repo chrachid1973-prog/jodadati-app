@@ -17,15 +17,16 @@ from google.genai import types
 import docx
 from docx.shared import Cm, Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.oxml import parse_xml, OxmlElement
-from docx.oxml.ns import nsdecls, qn
+from docx.enum.table import WD_ALIGN_VERTICAL
+from docx.oxml import parse_xml
+from docx.oxml.ns import nsdecls
 import json
 import io
 import re
 
 st.set_page_config(page_title="منصة الجذاذات التربوية الرسمية", layout="wide")
 
-# رسم حدود الجدول بأسلوب مسطر كامل
+# رسم حدود الجدول الرسمية الكاملة
 def set_table_borders(table):
     tblPr = table._tbl.tblPr
     borders = parse_xml(r'''
@@ -34,13 +35,13 @@ def set_table_borders(table):
             <w:left w:val="single" w:sz="6" w:space="0" w:color="000000"/>
             <w:bottom w:val="single" w:sz="6" w:space="0" w:color="000000"/>
             <w:right w:val="single" w:sz="6" w:space="0" w:color="000000"/>
-            <w:insideH w:val="single" w:sz="4" w:space="0" w:color="000000"/>
-            <w:insideV w:val="single" w:sz="4" w:space="0" w:color="000000"/>
+            <w:insideH w:val="single" w:sz="4" w:space="0" w:color="888888"/>
+            <w:insideV w:val="single" w:sz="4" w:space="0" w:color="888888"/>
         </w:tblBorders>
     '''.format(nsdecls('w')))
     tblPr.append(borders)
 
-# محاذاة الجدول لليمين وتطبيق الترتيب العربي الصارم للأعمدة
+# محاذاة الجدول لليمين وتطبيق الترتيب العربي RTL للأعمدة
 def set_table_rtl_and_right(table):
     tblPr = table._tbl.tblPr
     bidiVisual = parse_xml(r'<w:bidiVisual {}/>'.format(nsdecls('w')))
@@ -49,25 +50,29 @@ def set_table_rtl_and_right(table):
     tblPr.append(jc)
     set_table_borders(table)
 
-# ضبط خصائص الخلية
-def format_cell(cell, fill_hex=None):
+# ضبط خصائص الخلية: اتجاه RTL، وتظليل، وتوسيط عمودي
+def format_cell(cell, fill_hex=None, vertical_center=True):
     tcPr = cell._element.get_or_add_tcPr()
     bidi = parse_xml(r'<w:bidi {} w:val="1"/>'.format(nsdecls('w')))
     tcPr.append(bidi)
+    if vertical_center:
+        cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
     if fill_hex:
         shd = parse_xml(r'<w:shd {} w:val="clear" w:color="auto" w:fill="{}"/>'.format(nsdecls('w'), fill_hex))
         tcPr.append(shd)
 
-# ضبط الفقرة بالكامل لتكون عربية صارمة من اليمين
-def format_paragraph_rtl(p, align=WD_ALIGN_PARAGRAPH.RIGHT, space_before=2, space_after=2):
+# ضبط الفقرة بالكامل لتكون عربية ومحاذاة صريحة (RTL)
+def format_paragraph(p, align=WD_ALIGN_PARAGRAPH.RIGHT, space_before=2, space_after=2):
     p.alignment = align
     pPr = p._p.get_or_add_pPr()
+    pPr.append(parse_xml(r'<w:pBidi {} w:val="1"/>'.format(nsdecls('w'))))
     pPr.append(parse_xml(r'<w:bidi {} w:val="1"/>'.format(nsdecls('w'))))
-    pPr.append(parse_xml(r'<w:jc {} w:val="right"/>'.format(nsdecls('w'))))
+    align_val = 'center' if align == WD_ALIGN_PARAGRAPH.CENTER else ('right' if align == WD_ALIGN_PARAGRAPH.RIGHT else 'left')
+    pPr.append(parse_xml(r'<w:jc {} w:val="{}"/>'.format(nsdecls('w'), align_val)))
     p.paragraph_format.space_before = Pt(space_before)
     p.paragraph_format.space_after = Pt(space_after)
 
-# إضافة النص العربي مع فرض خط وتوجيه RTL صريح على مستوى الحروف والكلمات
+# إضافة النص العربي مع فرض خط ووسوم RTL الصريحة
 def add_arabic_run(paragraph, text, font_size=11, bold=False):
     run = paragraph.add_run(text)
     run.bold = bold
@@ -79,7 +84,7 @@ def add_arabic_run(paragraph, text, font_size=11, bold=False):
     rPr.append(parse_xml(r'<w:lang {} w:bidi="ar-MA" w:val="ar-MA"/>'.format(nsdecls('w'))))
     return run
 
-# دالة إنشاء ملف Word بالجداول الرسمية ذات الـ 4 أعمدة
+# إنشاء ملف Word بالهيكلة المطابقة لصورة دليل الأستاذ ونقل الجداول بدقة
 def create_word_jodada(data):
     doc = docx.Document()
 
@@ -91,12 +96,11 @@ def create_word_jodada(data):
         section.header_distance = Cm(0.2)
         section.footer_distance = Cm(0.2)
         sectPr = section._sectPr
-        bidi = parse_xml(r'<w:bidi {}/>'.format(nsdecls('w')))
-        sectPr.append(bidi)
+        sectPr.append(parse_xml(r'<w:bidi {}/>'.format(nsdecls('w'))))
 
-    # البسملة
+    # البسملة في الوسط
     p_bism = doc.add_paragraph()
-    format_paragraph_rtl(p_bism, align=WD_ALIGN_PARAGRAPH.CENTER, space_before=0, space_after=3)
+    format_paragraph(p_bism, align=WD_ALIGN_PARAGRAPH.CENTER, space_before=0, space_after=3)
     add_arabic_run(p_bism, "بـــســـم الله الـرحـمـن الـرحــيــــم", font_size=13, bold=True)
 
     # جدول الترويسة المسطر
@@ -105,62 +109,62 @@ def create_word_jodada(data):
 
     # الصف 1
     p = t_head.cell(0, 0).paragraphs[0]
-    format_paragraph_rtl(p)
+    format_paragraph(p, align=WD_ALIGN_PARAGRAPH.CENTER)
     add_arabic_run(p, f"المؤسسة : {data['school']}", bold=True)
 
     p = t_head.cell(0, 1).paragraphs[0]
-    format_paragraph_rtl(p)
+    format_paragraph(p, align=WD_ALIGN_PARAGRAPH.CENTER)
     add_arabic_run(p, f"المستوى : {data['level']}", bold=True)
 
     p = t_head.cell(0, 2).paragraphs[0]
-    format_paragraph_rtl(p)
+    format_paragraph(p, align=WD_ALIGN_PARAGRAPH.CENTER)
     add_arabic_run(p, f"الأستاذ(ة) : {data['teacher']}", bold=True)
 
     # الصف 2
     p = t_head.cell(1, 0).paragraphs[0]
-    format_paragraph_rtl(p)
+    format_paragraph(p, align=WD_ALIGN_PARAGRAPH.CENTER)
     add_arabic_run(p, f"المادة : {data['subject']}", bold=True)
 
     p = t_head.cell(1, 1).paragraphs[0]
-    format_paragraph_rtl(p)
+    format_paragraph(p, align=WD_ALIGN_PARAGRAPH.CENTER)
     add_arabic_run(p, f"المرجع : {data['reference']}", bold=True)
 
     p = t_head.cell(1, 2).paragraphs[0]
-    format_paragraph_rtl(p)
+    format_paragraph(p, align=WD_ALIGN_PARAGRAPH.CENTER)
     add_arabic_run(p, f"المكون : {data['component']}", bold=True)
 
     # الصف 3
     c_lesson = t_head.cell(2, 0).merge(t_head.cell(2, 1))
     p = c_lesson.paragraphs[0]
-    format_paragraph_rtl(p)
+    format_paragraph(p, align=WD_ALIGN_PARAGRAPH.CENTER)
     add_arabic_run(p, f"الدرس {data['jodada_num']} : {data['lesson_title']}", bold=True)
 
     p = t_head.cell(2, 2).paragraphs[0]
-    format_paragraph_rtl(p)
+    format_paragraph(p, align=WD_ALIGN_PARAGRAPH.CENTER)
     add_arabic_run(p, f"رقم الجذاذة : {data['jodada_num']}", bold=True)
 
     # الصف 4
     p = t_head.cell(3, 0).paragraphs[0]
-    format_paragraph_rtl(p)
+    format_paragraph(p, align=WD_ALIGN_PARAGRAPH.CENTER)
     add_arabic_run(p, f"أسبوع السنة : {data['week']}", bold=True)
 
     p = t_head.cell(3, 1).paragraphs[0]
-    format_paragraph_rtl(p)
+    format_paragraph(p, align=WD_ALIGN_PARAGRAPH.CENTER)
     add_arabic_run(p, f"الحصة : {data['session']}", bold=True)
 
     p = t_head.cell(3, 2).paragraphs[0]
-    format_paragraph_rtl(p)
+    format_paragraph(p, align=WD_ALIGN_PARAGRAPH.CENTER)
     add_arabic_run(p, f"مدة الإنجاز : {data['duration']}", bold=True)
 
     # الصف 5: الأهداف
     c_goals = t_head.cell(4, 0).merge(t_head.cell(4, 2))
     p_title = c_goals.paragraphs[0]
-    format_paragraph_rtl(p_title, space_before=1, space_after=1)
-    add_arabic_run(p_title, "أهداف التعلم :", bold=True, font_size=11.5)
+    format_paragraph(p_title, align=WD_ALIGN_PARAGRAPH.RIGHT, space_before=2, space_after=2)
+    add_arabic_run(p_title, "أهداف التعلم المسطرة في الدليل :", bold=True, font_size=11.5)
 
     for goal in data['learning_goals']:
         p_g = c_goals.add_paragraph()
-        format_paragraph_rtl(p_g, align=WD_ALIGN_PARAGRAPH.RIGHT, space_before=1, space_after=1)
+        format_paragraph(p_g, align=WD_ALIGN_PARAGRAPH.RIGHT, space_before=1, space_after=1)
         add_arabic_run(p_g, f"• {goal}", font_size=11)
 
     for row in t_head.rows:
@@ -169,78 +173,99 @@ def create_word_jodada(data):
 
     doc.add_paragraph().paragraph_format.space_after = Pt(2)
 
-    # دالة بناء جدول الجذاذة الرسمي المكون من 4 أعمدة
-    def build_session_table_4cols(session_title, steps):
+    # بناء جدول الجذاذة المطابق لنموذج دليل الأستاذ (4 أعمدة رسمية مع دعم الجداول الفرعية)
+    def build_session_table_official(session_title, steps):
         t = doc.add_table(rows=1, cols=4)
         set_table_rtl_and_right(t)
 
-        # عنوان الحصة مدمج على الـ 4 أعمدة
         hdr = t.cell(0, 0).merge(t.cell(0, 3))
         format_cell(hdr, "E8E8E8")
         p_hdr = hdr.paragraphs[0]
-        format_paragraph_rtl(p_hdr, align=WD_ALIGN_PARAGRAPH.CENTER)
+        format_paragraph(p_hdr, align=WD_ALIGN_PARAGRAPH.CENTER)
         add_arabic_run(p_hdr, session_title, font_size=12.5, bold=True)
 
         cols_row = t.add_row()
         headers = [
-            "المراحل / المحطات",
-            "أنشطة التعليم والتعلم (السيناريو الديداكتيكي المفصل)",
-            "الدعامات والوسائل",
-            "التقويم والدعم"
+            "مراحل الإنجاز",
+            "أهداف التعلم",
+            "الدعامات الديداكتيكية",
+            "التدبير الديداكتيكي لأنشطة التعلم"
         ]
 
         for idx, text in enumerate(headers):
             c = cols_row.cells[idx]
             format_cell(c, "F2F2F2")
             p = c.paragraphs[0]
-            format_paragraph_rtl(p, align=WD_ALIGN_PARAGRAPH.CENTER)
+            format_paragraph(p, align=WD_ALIGN_PARAGRAPH.CENTER)
             add_arabic_run(p, text, font_size=11, bold=True)
 
         for item in steps:
             r = t.add_row()
             for c in r.cells:
-                format_cell(c)
+                format_cell(c, vertical_center=False)
 
-            # العمود 1: المراحل
+            # 1. مراحل الإنجاز (في الوسط)
             p0 = r.cells[0].paragraphs[0]
-            format_paragraph_rtl(p0, align=WD_ALIGN_PARAGRAPH.CENTER)
+            format_paragraph(p0, align=WD_ALIGN_PARAGRAPH.CENTER)
             add_arabic_run(p0, item.get("step", ""), font_size=10.5, bold=True)
 
-            # العمود 2: الأنشطة كاملة
+            # 2. أهداف التعلم الخاصة بالمرحلة (محاذاة لليمين)
             p1 = r.cells[1].paragraphs[0]
+            format_paragraph(p1, align=WD_ALIGN_PARAGRAPH.RIGHT, space_before=1, space_after=1)
+            add_arabic_run(p1, item.get("stage_goal", ""), font_size=10.5)
+
+            # 3. الدعامات الديداكتيكية (محاذاة لليمين)
+            p2 = r.cells[2].paragraphs[0]
+            format_paragraph(p2, align=WD_ALIGN_PARAGRAPH.RIGHT, space_before=1, space_after=1)
+            add_arabic_run(p2, item.get("supports", ""), font_size=10)
+
+            # 4. التدبير الديداكتيكي لأنشطة التعلم
+            c_act = r.cells[3]
+            p3 = c_act.paragraphs[0]
             act_text = item.get("activities", "")
             lines = [l.strip() for l in act_text.split("\n") if l.strip()]
             for i, line in enumerate(lines):
                 if i == 0:
-                    format_paragraph_rtl(p1, align=WD_ALIGN_PARAGRAPH.RIGHT, space_before=1, space_after=1)
-                    add_arabic_run(p1, line, font_size=10.5)
+                    format_paragraph(p3, align=WD_ALIGN_PARAGRAPH.RIGHT, space_before=1, space_after=1)
+                    add_arabic_run(p3, line, font_size=10.5)
                 else:
-                    p_new = r.cells[1].add_paragraph()
-                    format_paragraph_rtl(p_new, align=WD_ALIGN_PARAGRAPH.RIGHT, space_before=1, space_after=1)
+                    p_new = c_act.add_paragraph()
+                    format_paragraph(p_new, align=WD_ALIGN_PARAGRAPH.RIGHT, space_before=1, space_after=1)
                     add_arabic_run(p_new, line, font_size=10.5)
 
-            # العمود 3: الدعامات والوسائل
-            p2 = r.cells[2].paragraphs[0]
-            format_paragraph_rtl(p2, align=WD_ALIGN_PARAGRAPH.RIGHT, space_before=1, space_after=1)
-            add_arabic_run(p2, item.get("supports", "كتاب التلميذ، وثائق ودعامات مصورة"), font_size=10)
-
-            # العمود 4: التقويم والدعم
-            p3 = r.cells[3].paragraphs[0]
-            format_paragraph_rtl(p3, align=WD_ALIGN_PARAGRAPH.RIGHT, space_before=1, space_after=1)
-            add_arabic_run(p3, item.get("evaluation", "تقويم تكويني ورصد التعثرات والمعالجة"), font_size=10)
+            # إذا ورد جدول في الدليل داخل هذا النشاط، يتم إنشاؤه وتسطيره بالكامل هنا
+            sub_table = item.get("table_data", None)
+            if sub_table and isinstance(sub_table, list) and len(sub_table) > 0:
+                rows_cnt = len(sub_table)
+                cols_cnt = len(sub_table[0]) if rows_cnt > 0 else 0
+                if cols_cnt > 0:
+                    p_sp = c_act.add_paragraph()
+                    format_paragraph(p_sp, space_before=2, space_after=2)
+                    
+                    st_sub = c_act.add_table(rows=rows_cnt, cols=cols_cnt)
+                    set_table_rtl_and_right(st_sub)
+                    
+                    for r_idx, row_items in enumerate(sub_table):
+                        for c_idx, val in enumerate(row_items):
+                            sub_c = st_sub.cell(r_idx, c_idx)
+                            fill_c = "EEEEEE" if r_idx == 0 else None
+                            format_cell(sub_c, fill_c)
+                            p_sc = sub_c.paragraphs[0]
+                            format_paragraph(p_sc, align=WD_ALIGN_PARAGRAPH.CENTER if r_idx == 0 else WD_ALIGN_PARAGRAPH.RIGHT)
+                            add_arabic_run(p_sc, str(val), font_size=10, bold=(r_idx == 0))
 
         for r in t.rows:
-            r.cells[0].width = Cm(3.2)
-            r.cells[1].width = Cm(10.0)
-            r.cells[2].width = Cm(3.0)
-            r.cells[3].width = Cm(3.0)
+            r.cells[0].width = Cm(3.0)   # مراحل الإنجاز
+            r.cells[1].width = Cm(3.2)   # أهداف التعلم
+            r.cells[2].width = Cm(3.5)   # الدعامات الديداكتيكية
+            r.cells[3].width = Cm(9.5)   # التدبير الديداكتيكي لأنشطة التعلم
 
         doc.add_paragraph().paragraph_format.space_after = Pt(4)
 
     if data.get("session_1"):
-        build_session_table_4cols("الحصة الأولى : بناء التعلمات (45 دقيقة)", data["session_1"])
+        build_session_table_official("الحصة الأولى (45 دقيقة)", data["session_1"])
     if data.get("session_2"):
-        build_session_table_4cols("الحصة الثانية : تقويم ودعم وتثبيت (45 دقيقة)", data["session_2"])
+        build_session_table_official("الحصة الثانية (45 دقيقة)", data["session_2"])
 
     buffer = io.BytesIO()
     doc.save(buffer)
@@ -249,7 +274,7 @@ def create_word_jodada(data):
 
 # واجهة Streamlit
 st.markdown("<h2 style='text-align: right; direction: rtl; color: #1E3A8A;'>منصة الجذاذات التربوية الرسمية</h2>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: right; direction: rtl;'>توليد جذاذات رسمية مفصلة مطابقة للدليل في جداول ذات 4 أعمدة موجهة لليمين بالكامل</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: right; direction: rtl;'>توليد جذاذات رسمية مفصلة مطابقة لدليل الأستاذ مع نسخ الجداول حرفياً</p>", unsafe_allow_html=True)
 st.write("---")
 
 with st.sidebar:
@@ -273,6 +298,7 @@ with st.expander("البيانات الإدارية", expanded=True):
     with col_adm3:
         st.session_state.directorate = st.text_input("المديرية الإقليمية:", value=st.session_state.directorate)
 
+# هيكلة المقررات والمراجع
 CURRICULUM_DB = {
     "التربية الإسلامية": {
         "components": ["الحكمة", "القسط", "الاستجابة", "الاقتداء", "التزكية (العقيدة)", "التزكية (القرآن الكريم)"],
@@ -399,7 +425,6 @@ col5, col6, col7 = st.columns(3)
 with col5:
     lesson_order = st.number_input("ترتيب الدرس في المقرر (رقم فقط):", min_value=1, max_value=40, value=12)
 with col6:
-    # التسميات الدقيقة للحصص بدون زيادات
     session_choice = st.selectbox("الحصة:", ["الحصة الأولى + الثانية", "الحصة الأولى", "الحصة الثانية"])
 with col7:
     week_num = st.number_input("أسبوع السنة المعتمد:", min_value=1, max_value=34, value=28)
@@ -420,7 +445,7 @@ if st.button("توليد الجذاذة", type="primary", use_container_width=Tr
                 prompt = f"""
                 أنت مفتش تربوي معتمد بالمملكة المغربية.
                 المهمة الإلزامية: كتابة الجذاذة التربوية الرسمية المفصلة للدرس رقم {lesson_order} كنسخة طبق الأصل تماماً من "دليل الأستاذ" و"كتاب التلميذ" للمرجع {reference} (الطبعة الحديثة المنقحة).
-                تحذير صارم: يمنع منعاً باتاً التلخيص أو الاختزال. يجب أن تكون الجذاذة طويلة ومفصلة وشاملة لكل خطوة.
+                تحذير صارم: يمنع التلخيص نهائياً. انقل كل كلمة، سؤال، وثيقة، وأي جدول ورد في الدليل.
 
                 المعطيات:
                 - المستوى الدراسي: {level} ابتدائي.
@@ -431,18 +456,17 @@ if st.button("توليد الجذاذة", type="primary", use_container_width=Tr
                 - الأسبوع: {week_num}.
                 {title_hint}
 
-                تفاصيل المحتوى المطلوب نقله حرفياً في الأعمدة الأربعة:
-                1. عنوان الدرس: العنوان الرسمي للدرس {lesson_order}.
-                2. أهداف التعلم: انقل جميع الأهداف المسطرة في الدليل كاملة دون إنقاص أي حرف.
-                3. أنشطة التعليم والتعلم:
-                   - انقل نص كل وثيقة أو دعامة أو خريطة أو نص تاريخي بالكامل مع ذكر رقمها والصفحة بدقة.
-                   - اكتب جميع الأسئلة التوجيهية وأسئلة الفهم والتحليل التي يطرحها الأستاذ بالتفصيل.
-                   - اكتب مهام وأجوبة واستنتاجات المتعلمين بتفصيل دقيق.
-                   - اكتب الحوار الديداكتيكي وخطوات التفسير والتركيب والاستخلاص كاملة كلمة بكلمة.
-                4. الدعامات والوسائل: حدد بدقة أرقام الوثائق من كتاب التلميذ والصفحات المعتمدة.
-                5. التقويم والدعم: انقل الأسئلة التقويمية التكوينية، مؤشرات الإنجاز، وأنشطة الدعم الفوري المسطرة في الدليل.
+                الهيكلة الإلزامية المطابقة لدليل الأستاذ في 4 أعمدة رئيسية:
+                1. مراحل الإنجاز (تمهيد، النشاط 1، النشاط 2، استخلاص...).
+                2. أهداف التعلم (الهدف الخاص بكل مرحلة أو نشاط).
+                3. الدعامات الديداكتيكية (الوثائق، أرقامها، نوع السند، الصفحات من كتاب التلميذ).
+                4. التدبير الديداكتيكي لأنشطة التعلم:
+                   - السيناريو الديداكتيكي كاملاً بنصه الحرفي دون اختصار.
+                   - الأسئلة التوجيهية وأسئلة الفهم والتحليل كاملة بنصها.
+                   - نصوص الوثائق المعتمدة وأجوبة واستنتاجات المتعلمين بتفصيل دقيق.
+                   - الجداول: إذا ورد في الدليل جدول لتحليل وثائق، مقارنة، خطاطة، أو شبكة تقويم، انقله بالكامل في حقل table_data كمصفوفة نصوص.
 
-                أخرج الناتج بصيغة JSON صارمة حصراً بالهيكل التالي:
+                أخرج الناتج بصيغة JSON صارمة بالهيكل التالي:
                 {{
                     "lesson_title": "[العنوان الحقيقي للدرس فقط دون ترقيم]",
                     "learning_goals": [
@@ -453,32 +477,33 @@ if st.button("توليد الجذاذة", type="primary", use_container_width=Tr
                     "session_1": [
                         {{
                             "step": "تمهيد وتشخيص المكتسبات",
-                            "activities": "نص التمهيد الكامل، الأسئلة التشخيصية بالتفصيل، الأجوبة المتوقعة، وربط التعلمات السابقة بالجديدة",
+                            "stage_goal": "تهييء المتعلمين للاشتغال والربط بالمكتسبات السابقة",
                             "supports": "كتاب التلميذ ص ...، نص التمهيد والأسئلة التأطيرية",
-                            "evaluation": "تقويم تشخيصي: رصد المكتسبات السابقة ومؤشرات تملك المشكلة"
+                            "activities": "يوظف الأستاذ الرصيد المكتسب... يطرح الأسئلة التالية بالتفصيل: س1... س2... يدون الفرضيات على السبورة...",
+                            "table_data": null
                         }},
                         {{
                             "step": "النشاط 1 : [عنوان النشاط]",
-                            "activities": "دراسة الوثيقة 1 بنصها الكامل، أسئلة الاستكشاف والتحليل، مهام المتعلمين، وخلاصة النشاط الأول",
-                            "supports": "الوثيقة 1 (نص/صورة) ص ...، الوثيقة 2 ص ...",
-                            "evaluation": "تقويم تكويني: مدى قدرة المتعلم على استخراج معطيات الوثائق"
-                        }},
-                        {{
-                            "step": "النشاط 2 : [عنوان النشاط]",
-                            "activities": "دراسة الوثيقة 2 والوثيقة 3 بنصوصهما والأسئلة المفصلة والأجوبة والخلاصات المرحلية",
-                            "supports": "الوثائق 3 و 4 ص ... من كتاب التلميذ",
-                            "evaluation": "تقويم تكويني ورصد التعثرات الفورية"
+                            "stage_goal": "الهدف الدقيق للنشاط الأول من الدليل",
+                            "supports": "الوثيقة 1 (نص تاريخي)، الوثيقة 2 (خريطة) ص ...",
+                            "activities": "قراءة واستثمار الوثيقة 1... يطرح الأستاذ الأسئلة الآتية: س1... ج1... س2... ج2...",
+                            "table_data": [
+                                ["خانة الرأس 1", "خانة الرأس 2"],
+                                ["بيان 1", "بيان 2"]
+                            ]
                         }}
                     ],
                     "session_2": [
                         {{
-                            "step": "تقويم التعلمات ودعمها",
-                            "activities": "نصوص الوضعيات والتمارين التطبيقية كاملة للدفاتر والأنشطة الكتابية وإجراءات المعالجة",
-                            "supports": "كتاب التلميذ، فقرة أقوم تعلماتي ص ...، دفاتر الدروس",
-                            "evaluation": "تقويم ختامي جزئي لقياس مدى تحقق أهداف الدرس"
+                            "step": "تقويم ودعم التعلمات",
+                            "stage_goal": "تثبيت المفاهيم وقياس مدى تملك أهداف الدرس",
+                            "supports": "كتاب التلميذ فقرة أقوم تعلماتي ص ...، الدفاتر",
+                            "activities": "يطرح الأستاذ الوضعيات التقويمية التالية: التمرين 1... ينجز المتعلمون على الدفاتر، التصحيح الجماعي والفردي ورصد التعثرات.",
+                            "table_data": null
                         }}
                     ]
                 }}
+                ملاحظة: إذا لم يتضمن النشاط جدولاً ضع في table_data القيمة null. أما إذا ورد جدول في الدليل فانقله حرفياً.
                 """
 
                 config = types.GenerateContentConfig(
