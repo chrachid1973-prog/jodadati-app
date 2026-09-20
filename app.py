@@ -77,11 +77,10 @@ def add_arabic_run(paragraph, text, font_size=11, bold=False):
     rPr.append(parse_xml(r'<w:lang {} w:bidi="ar-MA" w:val="ar-MA"/>'.format(nsdecls('w'))))
     return run
 
-# دالة إنشاء ملف Word بتنسيق شامل للجداول والنصوص الكاملة
+# بناء المستند بجداول مسطرة ورأسية كاملة
 def create_word_jodada(data):
     doc = docx.Document()
 
-    # الهوامش الرسمية: 0.5 سم علوي وسفلي، 1.0 سم يمين ويسار
     for section in doc.sections:
         section.top_margin = Cm(0.5)
         section.bottom_margin = Cm(0.5)
@@ -135,7 +134,7 @@ def create_word_jodada(data):
     format_paragraph_rtl(p)
     add_arabic_run(p, f"رقم الجذاذة : {data['jodada_num']}", bold=True)
 
-    # الصف 4: أسبوع السنة، الحصة، والمدة
+    # الصف 4
     p = t_head.cell(3, 0).paragraphs[0]
     format_paragraph_rtl(p)
     add_arabic_run(p, f"أسبوع السنة : {data['week']}", bold=True)
@@ -148,7 +147,7 @@ def create_word_jodada(data):
     format_paragraph_rtl(p)
     add_arabic_run(p, f"مدة الإنجاز : {data['duration']}", bold=True)
 
-    # الصف 5: الأهداف كاملة دون إنقاص
+    # الصف 5: الأهداف دون اختصار
     c_goals = t_head.cell(4, 0).merge(t_head.cell(4, 2))
     p_title = c_goals.paragraphs[0]
     format_paragraph_rtl(p_title, space_before=1, space_after=1)
@@ -165,7 +164,7 @@ def create_word_jodada(data):
 
     doc.add_paragraph().paragraph_format.space_after = Pt(2)
 
-    # بناء جداول الحصص التفصيلية بدقة متناهية
+    # بناء جداول الحصص التفصيلية مع دعم الجداول الفرعية
     def build_session_table(session_title, steps):
         t = doc.add_table(rows=1, cols=2)
         set_table_rtl_and_right(t)
@@ -195,12 +194,10 @@ def create_word_jodada(data):
             format_cell(c0)
             format_cell(c1)
 
-            # اسم المرحلة
             p_step = c0.paragraphs[0]
             format_paragraph_rtl(p_step, align=WD_ALIGN_PARAGRAPH.CENTER)
             add_arabic_run(p_step, item.get("step", ""), font_size=11, bold=True)
 
-            # تفاصيل الأنشطة الكاملة
             p_act = c1.paragraphs[0]
             act_text = item.get("activities", "")
             lines = [l.strip() for l in act_text.split("\n") if l.strip()]
@@ -214,7 +211,6 @@ def create_word_jodada(data):
                     format_paragraph_rtl(p_new, align=WD_ALIGN_PARAGRAPH.RIGHT, space_before=1, space_after=1)
                     add_arabic_run(p_new, line, font_size=11)
 
-            # إذا كان هناك جدول فرعي داخل المرحلة، يتم إنشاؤه وتسطيره داخل الخلية
             sub_table_data = item.get("table_data", None)
             if sub_table_data and isinstance(sub_table_data, list) and len(sub_table_data) > 0:
                 sub_rows = len(sub_table_data)
@@ -253,7 +249,7 @@ def create_word_jodada(data):
 
 # واجهة Streamlit
 st.markdown("<h2 style='text-align: right; direction: rtl; color: #1E3A8A;'>منصة الجذاذات التربوية الرسمية الشاملة</h2>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: right; direction: rtl;'>نسخ حرفي ومفصل لكافة مراحل ووثائق وأسئلة وجداول دليل الأستاذ دون تلخيص أو اختصار</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: right; direction: rtl;'>توليد جذاذات رسمية دقيقة مطابقة للدليل باستخدام نماذج Gemini 3.8 / 3.6</p>", unsafe_allow_html=True)
 st.write("---")
 
 with st.sidebar:
@@ -277,7 +273,7 @@ with st.expander("البيانات الإدارية (تُحفظ تلقائياً
     with col_adm3:
         st.session_state.directorate = st.text_input("المديرية الإقليمية:", value=st.session_state.directorate)
 
-# هيكلة المقررات والمراجع الرسمية
+# هيكلة المقررات والمراجع
 CURRICULUM_DB = {
     "التربية الإسلامية": {
         "components": ["الحكمة", "القسط", "الاستجابة", "الاقتداء", "التزكية (العقيدة)", "التزكية (القرآن الكريم)"],
@@ -333,7 +329,6 @@ CURRICULUM_DB = {
     }
 }
 
-# فهرس التدقيق الرسمي لدروس المستوى الخامس في الاجتماعيات (وفق المنهاج المنقح)
 OFFICIAL_SYLLABUS = {
     "الخامس": {
         "الاجتماعيات": {
@@ -418,7 +413,7 @@ if st.button("توليد الجذاذة الكاملة غير المختصرة �
         exact_title = OFFICIAL_SYLLABUS.get(level, {}).get(subject, {}).get(component, {}).get(lesson_order, None)
         title_hint = f"العنوان الرسمي الحقيقي للدرس {lesson_order} في فهرس هذا المقرر هو: '{exact_title}'." if exact_title else ""
 
-        with st.spinner(f"جاري نسخ الجذاذة الكاملة بدقة متناهية ودون اختصار للدرس {lesson_order} في {subject} ({reference})..."):
+        with st.spinner(f"جاري استخراج الجذاذة الحرفية بدقة متناهية عبر محرك Gemini 3.8 / 3.6..."):
             try:
                 client = genai.Client(api_key=api_key)
 
@@ -445,7 +440,7 @@ if st.button("توليد الجذاذة الكاملة غير المختصرة �
                 4. الحصة الثانية (45 دقيقة):
                    - أنشطة التقويم والدعم: انقل الأسئلة الشفهية، نصوص التوضيحات والوضعيات التقويمية المكتوبة على الدفاتر، وأنشطة الدعم والمعالجة بدقة.
                    - إذا ورد جدول لشبكة تقويم أو تمارين جدولية، انقله بالكامل في table_data.
-                5. اكتب المحتوى مباشرة بصيغة الجذاذة المعتمدة دون أي عبارات زائدة.
+                5. اكتب المحتوى مباشرة بصيغة الجذاذة المعتمدة دون أي عبارات استدراكية.
 
                 أخرج الناتج بصيغة JSON صارمة جداً بالهيكل التالي:
                 {{
@@ -475,16 +470,16 @@ if st.button("توليد الجذاذة الكاملة غير المختصرة �
                 ملاحظة: إذا لم يتضمن النشاط جدولاً، ضع في حقل "table_data" القيمة null. أما إذا كان يحتوي على جدول فانقله كاملاً.
                 """
 
-                # استخدام أقصى حد للرموز لمنع أي تلخيص أو انقطاع
                 config = types.GenerateContentConfig(
                     temperature=0.2,
                     max_output_tokens=8192
                 )
 
+                # حصر التوريد حصراً بنماذج 3.8 و 3.6 فما فوق
                 candidate_models = [
-                    "gemini-2.5-flash",
-                    "gemini-3.6-flash",
-                    "gemini-2.0-flash"
+                    "gemini-3.8-flash",
+                    "gemini-3.7-flash",
+                    "gemini-3.6-flash"
                 ]
 
                 response = None
@@ -504,7 +499,7 @@ if st.button("توليد الجذاذة الكاملة غير المختصرة �
                         continue
 
                 if response is None:
-                    raise Exception(f"فشل الاتصال بالنماذج: {last_err}")
+                    raise Exception(f"فشل الاتصال بالنماذج (3.8 و 3.6): {last_err}")
 
                 raw_text = response.text.strip()
                 if raw_text.startswith("```json"):
@@ -547,7 +542,7 @@ if st.button("توليد الجذاذة الكاملة غير المختصرة �
 
                 word_buffer = create_word_jodada(jodada_full)
 
-                st.success(f"تم إعداد الجذاذة الكاملة غير المختصرة: الدرس {lesson_order} : {jodada_full['lesson_title']}")
+                st.success(f"تم بنجاح إعداد الجذاذة الكاملة عبر محرك 3.8/3.6: الدرس {lesson_order} : {jodada_full['lesson_title']}")
 
                 st.download_button(
                     label="تحميل الجذاذة الرسمية المسطرة الشاملة بصيغة Word (.docx)",
