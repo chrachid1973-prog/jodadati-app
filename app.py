@@ -17,8 +17,8 @@ from google.genai import types
 import docx
 from docx.shared import Cm, Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.oxml import parse_xml
-from docx.oxml.ns import nsdecls
+from docx.oxml import parse_xml, OxmlElement
+from docx.oxml.ns import nsdecls, qn
 import json
 import io
 import re
@@ -58,7 +58,7 @@ def format_cell(cell, fill_hex=None):
         shd = parse_xml(r'<w:shd {} w:val="clear" w:color="auto" w:fill="{}"/>'.format(nsdecls('w'), fill_hex))
         tcPr.append(shd)
 
-# ضبط الفقرة بالكامل لتكون عربية ومن اليمين
+# ضبط الفقرة بالكامل لتكون عربية صارمة من اليمين
 def format_paragraph_rtl(p, align=WD_ALIGN_PARAGRAPH.RIGHT, space_before=2, space_after=2):
     p.alignment = align
     pPr = p._p.get_or_add_pPr()
@@ -67,7 +67,7 @@ def format_paragraph_rtl(p, align=WD_ALIGN_PARAGRAPH.RIGHT, space_before=2, spac
     p.paragraph_format.space_before = Pt(space_before)
     p.paragraph_format.space_after = Pt(space_after)
 
-# إضافة النص العربي مع فرض خط وتوجيه RTL
+# إضافة النص العربي مع فرض خط وتوجيه RTL صريح على مستوى الحروف والكلمات
 def add_arabic_run(paragraph, text, font_size=11, bold=False):
     run = paragraph.add_run(text)
     run.bold = bold
@@ -75,6 +75,7 @@ def add_arabic_run(paragraph, text, font_size=11, bold=False):
     run.font.size = Pt(font_size)
     rPr = run._r.get_or_add_rPr()
     rPr.append(parse_xml(r'<w:rtl {} w:val="1"/>'.format(nsdecls('w'))))
+    rPr.append(parse_xml(r'<w:rFonts {} w:ascii="Traditional Arabic" w:hAnsi="Traditional Arabic" w:cs="Traditional Arabic"/>'.format(nsdecls('w'))))
     rPr.append(parse_xml(r'<w:lang {} w:bidi="ar-MA" w:val="ar-MA"/>'.format(nsdecls('w'))))
     return run
 
@@ -180,11 +181,10 @@ def create_word_jodada(data):
         format_paragraph_rtl(p_hdr, align=WD_ALIGN_PARAGRAPH.CENTER)
         add_arabic_run(p_hdr, session_title, font_size=12.5, bold=True)
 
-        # صف رؤوس الأعمدة الأربعة الرسمية
         cols_row = t.add_row()
         headers = [
             "المراحل / المحطات",
-            "أنشطة التعليم والتعلم (السيناريو الديداكتيكي)",
+            "أنشطة التعليم والتعلم (السيناريو الديداكتيكي المفصل)",
             "الدعامات والوسائل",
             "التقويم والدعم"
         ]
@@ -196,7 +196,6 @@ def create_word_jodada(data):
             format_paragraph_rtl(p, align=WD_ALIGN_PARAGRAPH.CENTER)
             add_arabic_run(p, text, font_size=11, bold=True)
 
-        # تعبئة الصفوف الأربعة
         for item in steps:
             r = t.add_row()
             for c in r.cells:
@@ -223,14 +222,13 @@ def create_word_jodada(data):
             # العمود 3: الدعامات والوسائل
             p2 = r.cells[2].paragraphs[0]
             format_paragraph_rtl(p2, align=WD_ALIGN_PARAGRAPH.RIGHT, space_before=1, space_after=1)
-            add_arabic_run(p2, item.get("supports", "كتاب التلميذ، دعامات ووثائق مصورة"), font_size=10)
+            add_arabic_run(p2, item.get("supports", "كتاب التلميذ، وثائق ودعامات مصورة"), font_size=10)
 
             # العمود 4: التقويم والدعم
             p3 = r.cells[3].paragraphs[0]
             format_paragraph_rtl(p3, align=WD_ALIGN_PARAGRAPH.RIGHT, space_before=1, space_after=1)
-            add_arabic_run(p3, item.get("evaluation", "تقويم تكويني ورصد التعثرات والمعالجة الفورية"), font_size=10)
+            add_arabic_run(p3, item.get("evaluation", "تقويم تكويني ورصد التعثرات والمعالجة"), font_size=10)
 
-        # توزيع أبعاد الأعمدة الأربعة
         for r in t.rows:
             r.cells[0].width = Cm(3.2)
             r.cells[1].width = Cm(10.0)
@@ -251,7 +249,7 @@ def create_word_jodada(data):
 
 # واجهة Streamlit
 st.markdown("<h2 style='text-align: right; direction: rtl; color: #1E3A8A;'>منصة الجذاذات التربوية الرسمية</h2>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: right; direction: rtl;'>توليد جذاذات رسمية دقيقة مطابقة للدليل في جداول ذات 4 أعمدة متجهة لليمين</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: right; direction: rtl;'>توليد جذاذات رسمية مفصلة مطابقة للدليل في جداول ذات 4 أعمدة موجهة لليمين بالكامل</p>", unsafe_allow_html=True)
 st.write("---")
 
 with st.sidebar:
@@ -275,7 +273,6 @@ with st.expander("البيانات الإدارية", expanded=True):
     with col_adm3:
         st.session_state.directorate = st.text_input("المديرية الإقليمية:", value=st.session_state.directorate)
 
-# هيكلة المقررات والمراجع
 CURRICULUM_DB = {
     "التربية الإسلامية": {
         "components": ["الحكمة", "القسط", "الاستجابة", "الاقتداء", "التزكية (العقيدة)", "التزكية (القرآن الكريم)"],
@@ -402,13 +399,13 @@ col5, col6, col7 = st.columns(3)
 with col5:
     lesson_order = st.number_input("ترتيب الدرس في المقرر (رقم فقط):", min_value=1, max_value=40, value=12)
 with col6:
-    session_choice = st.selectbox("الحصة المطلوبة:", ["الحصتان معاً (1 و 2)", "الحصة الأولى", "الحصة الثانية"])
+    # التسميات الدقيقة للحصص بدون زيادات
+    session_choice = st.selectbox("الحصة:", ["الحصة الأولى + الثانية", "الحصة الأولى", "الحصة الثانية"])
 with col7:
     week_num = st.number_input("أسبوع السنة المعتمد:", min_value=1, max_value=34, value=28)
 
 st.write("---")
 
-# زر التوليد البسيط
 if st.button("توليد الجذاذة", type="primary", use_container_width=True):
     if not api_key:
         st.error("يرجى إدخال مفتاح Gemini API في الشريط الجانبي.")
@@ -416,14 +413,14 @@ if st.button("توليد الجذاذة", type="primary", use_container_width=Tr
         exact_title = OFFICIAL_SYLLABUS.get(level, {}).get(subject, {}).get(component, {}).get(lesson_order, None)
         title_hint = f"العنوان الرسمي الحقيقي للدرس {lesson_order} في فهرس هذا المقرر هو: '{exact_title}'." if exact_title else ""
 
-        # رسالة الانتظار البسيطة
         with st.spinner("يتم الآن إعداد الجذاذة..."):
             try:
                 client = genai.Client(api_key=api_key)
 
                 prompt = f"""
-                أنت مفتش بيداغوجي مقتدر بالتعليم الابتدائي بالمملكة المغربية.
-                المهمة: كتابة ونقل الجذاذة التربوية الرسمية للدرس رقم {lesson_order} مطابقة تماماً لما هو مدون في "دليل الأستاذ" و"كتاب التلميذ" للمرجع {reference} (الطبعة الحديثة المنقحة).
+                أنت مفتش تربوي معتمد بالمملكة المغربية.
+                المهمة الإلزامية: كتابة الجذاذة التربوية الرسمية المفصلة للدرس رقم {lesson_order} كنسخة طبق الأصل تماماً من "دليل الأستاذ" و"كتاب التلميذ" للمرجع {reference} (الطبعة الحديثة المنقحة).
+                تحذير صارم: يمنع منعاً باتاً التلخيص أو الاختزال. يجب أن تكون الجذاذة طويلة ومفصلة وشاملة لكل خطوة.
 
                 المعطيات:
                 - المستوى الدراسي: {level} ابتدائي.
@@ -434,36 +431,51 @@ if st.button("توليد الجذاذة", type="primary", use_container_width=Tr
                 - الأسبوع: {week_num}.
                 {title_hint}
 
-                التعليمات الإلزامية لهيكلة الجذاذة الرسمية (4 أعمدة):
-                1. عنوان الدرس: العنوان الرسمي للدرس رقم {lesson_order}.
-                2. أهداف التعلم: نقل أهداف التعلم الرسمية كاملة دون اختصار.
-                3. يجب تقسيم أنشطة كل حصة إلى 4 خانات رئيسية مطابقة للدليل:
-                   - المراحل / المحطات (تمهيد، النشاط 1، النشاط 2، استخلاص...).
-                   - أنشطة التعليم والتعلم: السيناريو الكامل، الأسئلة، المهام، التوجيهات، والنتائج دون تلخيص.
-                   - الدعامات والوسائل: أرقام الوثائق، نوع السند، الصفحات من كتاب التلميذ.
-                   - التقويم والدعم: أشكال التقويم التكويني، رصد التعثرات، وأنشطة الدعم الفوري.
+                تفاصيل المحتوى المطلوب نقله حرفياً في الأعمدة الأربعة:
+                1. عنوان الدرس: العنوان الرسمي للدرس {lesson_order}.
+                2. أهداف التعلم: انقل جميع الأهداف المسطرة في الدليل كاملة دون إنقاص أي حرف.
+                3. أنشطة التعليم والتعلم:
+                   - انقل نص كل وثيقة أو دعامة أو خريطة أو نص تاريخي بالكامل مع ذكر رقمها والصفحة بدقة.
+                   - اكتب جميع الأسئلة التوجيهية وأسئلة الفهم والتحليل التي يطرحها الأستاذ بالتفصيل.
+                   - اكتب مهام وأجوبة واستنتاجات المتعلمين بتفصيل دقيق.
+                   - اكتب الحوار الديداكتيكي وخطوات التفسير والتركيب والاستخلاص كاملة كلمة بكلمة.
+                4. الدعامات والوسائل: حدد بدقة أرقام الوثائق من كتاب التلميذ والصفحات المعتمدة.
+                5. التقويم والدعم: انقل الأسئلة التقويمية التكوينية، مؤشرات الإنجاز، وأنشطة الدعم الفوري المسطرة في الدليل.
 
                 أخرج الناتج بصيغة JSON صارمة حصراً بالهيكل التالي:
                 {{
                     "lesson_title": "[العنوان الحقيقي للدرس فقط دون ترقيم]",
                     "learning_goals": [
                         "الهدف الأول كاملاً",
-                        "الهدف الثاني كاملاً"
+                        "الهدف الثاني كاملاً",
+                        "الهدف الثالث كاملاً"
                     ],
                     "session_1": [
                         {{
-                            "step": "تمهيد واستحضار المكتسبات",
-                            "activities": "تفاصيل الأنشطة والأسئلة والمهام كاملة",
-                            "supports": "كتاب التلميذ، نص الانطلاق، وثيقة 1 ص ...",
-                            "evaluation": "تقويم تشخيصي لقياس المكتسبات السابقة"
+                            "step": "تمهيد وتشخيص المكتسبات",
+                            "activities": "نص التمهيد الكامل، الأسئلة التشخيصية بالتفصيل، الأجوبة المتوقعة، وربط التعلمات السابقة بالجديدة",
+                            "supports": "كتاب التلميذ ص ...، نص التمهيد والأسئلة التأطيرية",
+                            "evaluation": "تقويم تشخيصي: رصد المكتسبات السابقة ومؤشرات تملك المشكلة"
+                        }},
+                        {{
+                            "step": "النشاط 1 : [عنوان النشاط]",
+                            "activities": "دراسة الوثيقة 1 بنصها الكامل، أسئلة الاستكشاف والتحليل، مهام المتعلمين، وخلاصة النشاط الأول",
+                            "supports": "الوثيقة 1 (نص/صورة) ص ...، الوثيقة 2 ص ...",
+                            "evaluation": "تقويم تكويني: مدى قدرة المتعلم على استخراج معطيات الوثائق"
+                        }},
+                        {{
+                            "step": "النشاط 2 : [عنوان النشاط]",
+                            "activities": "دراسة الوثيقة 2 والوثيقة 3 بنصوصهما والأسئلة المفصلة والأجوبة والخلاصات المرحلية",
+                            "supports": "الوثائق 3 و 4 ص ... من كتاب التلميذ",
+                            "evaluation": "تقويم تكويني ورصد التعثرات الفورية"
                         }}
                     ],
                     "session_2": [
                         {{
-                            "step": "تقويم ودعم التعلمات",
-                            "activities": "نصوص الوضعيات والأنشطة التقويمية الموجهة للدفاتر",
-                            "supports": "كتاب التلميذ، دفاتر التمارين ص ...",
-                            "evaluation": "تقويم ختامي وتثبيت المفاهيم"
+                            "step": "تقويم التعلمات ودعمها",
+                            "activities": "نصوص الوضعيات والتمارين التطبيقية كاملة للدفاتر والأنشطة الكتابية وإجراءات المعالجة",
+                            "supports": "كتاب التلميذ، فقرة أقوم تعلماتي ص ...، دفاتر الدروس",
+                            "evaluation": "تقويم ختامي جزئي لقياس مدى تحقق أهداف الدرس"
                         }}
                     ]
                 }}
@@ -508,8 +520,8 @@ if st.button("توليد الجذاذة", type="primary", use_container_width=Tr
 
                 res_data = json.loads(raw_text)
 
-                s1_data = res_data.get("session_1", []) if "الأولى" in session_choice or "معاً" in session_choice else []
-                s2_data = res_data.get("session_2", []) if "الثانية" in session_choice or "معاً" in session_choice else []
+                s1_data = res_data.get("session_1", []) if "الأولى" in session_choice else []
+                s2_data = res_data.get("session_2", []) if "الثانية" in session_choice else []
 
                 clean_title = res_data.get("lesson_title", "")
                 for prefix in ["الدرس :", "الدرس", f"{lesson_order}", ":"]:
@@ -531,7 +543,7 @@ if st.button("توليد الجذاذة", type="primary", use_container_width=Tr
                     "jodada_num": lesson_order,
                     "week": week_num,
                     "session": session_choice,
-                    "duration": "45 دقيقة" if "فقط" in session_choice or "الأولى" in session_choice or "الثانية" in session_choice else "45 دقيقة × 2",
+                    "duration": "45 دقيقة" if session_choice in ["الحصة الأولى", "الحصة الثانية"] else "45 دقيقة × 2",
                     "learning_goals": res_data.get("learning_goals", []),
                     "session_1": s1_data,
                     "session_2": s2_data
