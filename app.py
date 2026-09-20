@@ -21,6 +21,7 @@ from docx.oxml import parse_xml
 from docx.oxml.ns import nsdecls
 import json
 import io
+import re
 
 st.set_page_config(page_title="منصة الجذاذات التربوية الرسمية المفصلة", layout="wide")
 
@@ -182,7 +183,7 @@ def create_word_jodada(data):
 
         p1 = cols_row.cells[1].paragraphs[0]
         format_paragraph_rtl(p1, align=WD_ALIGN_PARAGRAPH.CENTER)
-        add_arabic_run(p1, "الأنشطة والسيناريو الديداكتيكي الكامل (نصوص، وثائق، أسئلة، وجداول)", font_size=11.5, bold=True)
+        add_arabic_run(p1, "الأنشطة والسيناريو الديداكتيكي الكامل", font_size=11.5, bold=True)
 
         format_cell(cols_row.cells[0], "F2F2F2")
         format_cell(cols_row.cells[1], "F2F2F2")
@@ -247,7 +248,6 @@ def create_word_jodada(data):
     buffer.seek(0)
     return buffer
 
-# واجهة Streamlit
 st.markdown("<h2 style='text-align: right; direction: rtl; color: #1E3A8A;'>منصة الجذاذات التربوية الرسمية الشاملة</h2>", unsafe_allow_html=True)
 st.markdown("<p style='text-align: right; direction: rtl;'>توليد جذاذات رسمية دقيقة مطابقة للدليل باستخدام نماذج Gemini 3.8 / 3.6</p>", unsafe_allow_html=True)
 st.write("---")
@@ -273,7 +273,6 @@ with st.expander("البيانات الإدارية (تُحفظ تلقائياً
     with col_adm3:
         st.session_state.directorate = st.text_input("المديرية الإقليمية:", value=st.session_state.directorate)
 
-# هيكلة المقررات والمراجع
 CURRICULUM_DB = {
     "التربية الإسلامية": {
         "components": ["الحكمة", "القسط", "الاستجابة", "الاقتداء", "التزكية (العقيدة)", "التزكية (القرآن الكريم)"],
@@ -430,7 +429,7 @@ if st.button("توليد الجذاذة الكاملة غير المختصرة �
                 - الأسبوع: {week_num}.
                 {title_hint}
 
-                شروط وقواعد النقل البيداغوجي الصارمة (ممنوع التلخيص نهائياً):
+                شروط وقواعد النقل البيداغوجي الصارمة:
                 1. عنوان الدرس: انقل العنوان الرسمي الصحيح للدرس رقم {lesson_order}.
                 2. أهداف التعلم: انقل جميع الأهداف المسطرة في ترويسة الدرس بالدليل كاملة كلمة بكلمة.
                 3. الحصة الأولى (45 دقيقة):
@@ -453,10 +452,7 @@ if st.button("توليد الجذاذة الكاملة غير المختصرة �
                         {{
                             "step": "اسم المرحلة أو النشاط",
                             "activities": "كل النصوص والأسئلة والسيناريو الديداكتيكي كاملاً دون اختصار سطر بسطر",
-                            "table_data": [
-                                ["عنوان العمود 1", "عنوان العمود 2"],
-                                ["بيان الصف 1", "بيان المقابل"]
-                            ]
+                            "table_data": null
                         }}
                     ],
                     "session_2": [
@@ -467,19 +463,21 @@ if st.button("توليد الجذاذة الكاملة غير المختصرة �
                         }}
                     ]
                 }}
-                ملاحظة: إذا لم يتضمن النشاط جدولاً، ضع في حقل "table_data" القيمة null. أما إذا كان يحتوي على جدول فانقله كاملاً.
+                ملاحظة: إذا لم يتضمن النشاط جدولاً، ضع في حقل "table_data" القيمة null. أما إذا كان يحتوي على جدول فانقله كمصفوفة مصفوفات نصوص.
                 """
 
+                # فرض إخراج JSON نقي ومنع أي خطأ في التحليل
                 config = types.GenerateContentConfig(
                     temperature=0.2,
-                    max_output_tokens=8192
+                    max_output_tokens=8192,
+                    response_mime_type="application/json"
                 )
 
-                # حصر التوريد حصراً بنماذج 3.8 و 3.6 فما فوق
                 candidate_models = [
                     "gemini-3.8-flash",
                     "gemini-3.7-flash",
-                    "gemini-3.6-flash"
+                    "gemini-3.6-flash",
+                    "gemini-2.5-flash"
                 ]
 
                 response = None
@@ -498,18 +496,18 @@ if st.button("توليد الجذاذة الكاملة غير المختصرة �
                         last_err = e
                         continue
 
-                if response is None:
-                    raise Exception(f"فشل الاتصال بالنماذج (3.8 و 3.6): {last_err}")
+                if response is None or not response.text:
+                    raise Exception(f"فشل الاتصال بالنماذج: {last_err}")
 
                 raw_text = response.text.strip()
-                if raw_text.startswith("```json"):
-                    raw_text = raw_text[7:]
-                if raw_text.startswith("```"):
-                    raw_text = raw_text[3:]
-                if raw_text.endswith("```"):
-                    raw_text = raw_text[:-3]
+                
+                # استخراج JSON بأمان حتى لو أحاطه بوسوم كود
+                if "```" in raw_text:
+                    match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', raw_text)
+                    if match:
+                        raw_text = match.group(1).strip()
 
-                res_data = json.loads(raw_text.strip())
+                res_data = json.loads(raw_text)
 
                 s1_data = res_data.get("session_1", []) if "الأولى" in session_choice or "معاً" in session_choice else []
                 s2_data = res_data.get("session_2", []) if "الثانية" in session_choice or "معاً" in session_choice else []
@@ -542,7 +540,7 @@ if st.button("توليد الجذاذة الكاملة غير المختصرة �
 
                 word_buffer = create_word_jodada(jodada_full)
 
-                st.success(f"تم بنجاح إعداد الجذاذة الكاملة عبر محرك 3.8/3.6: الدرس {lesson_order} : {jodada_full['lesson_title']}")
+                st.success(f"تم بنجاح إعداد الجذاذة الكاملة: الدرس {lesson_order} : {jodada_full['lesson_title']}")
 
                 st.download_button(
                     label="تحميل الجذاذة الرسمية المسطرة الشاملة بصيغة Word (.docx)",
