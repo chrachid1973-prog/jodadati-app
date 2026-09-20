@@ -249,7 +249,7 @@ def create_word_jodada(data):
     return buffer
 
 st.markdown("<h2 style='text-align: right; direction: rtl; color: #1E3A8A;'>منصة الجذاذات التربوية الرسمية الشاملة</h2>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: right; direction: rtl;'>توليد جذاذات رسمية دقيقة مطابقة للدليل باستخدام نماذج Gemini 3.8 / 3.6</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: right; direction: rtl;'>توليد جذاذات رسمية دقيقة مطابقة للدليل باستخدام نماذج Gemini 3.6 / 3.8</p>", unsafe_allow_html=True)
 st.write("---")
 
 with st.sidebar:
@@ -412,7 +412,7 @@ if st.button("توليد الجذاذة الكاملة غير المختصرة �
         exact_title = OFFICIAL_SYLLABUS.get(level, {}).get(subject, {}).get(component, {}).get(lesson_order, None)
         title_hint = f"العنوان الرسمي الحقيقي للدرس {lesson_order} في فهرس هذا المقرر هو: '{exact_title}'." if exact_title else ""
 
-        with st.spinner(f"جاري استخراج الجذاذة الحرفية بدقة متناهية عبر محرك Gemini 3.8 / 3.6..."):
+        with st.spinner(f"جاري استخراج الجذاذة الحرفية بدقة عبر محرك Gemini 3.6 / 3.8..."):
             try:
                 client = genai.Client(api_key=api_key)
 
@@ -466,18 +466,17 @@ if st.button("توليد الجذاذة الكاملة غير المختصرة �
                 ملاحظة: إذا لم يتضمن النشاط جدولاً، ضع في حقل "table_data" القيمة null. أما إذا كان يحتوي على جدول فانقله كمصفوفة مصفوفات نصوص.
                 """
 
-                # فرض إخراج JSON نقي ومنع أي خطأ في التحليل
                 config = types.GenerateContentConfig(
                     temperature=0.2,
                     max_output_tokens=8192,
                     response_mime_type="application/json"
                 )
 
+                # حصر التوريد بنماذج الجيل الجديد المعتمدة (3.6 و 3.8)
                 candidate_models = [
-                    "gemini-3.8-flash",
-                    "gemini-3.7-flash",
                     "gemini-3.6-flash",
-                    "gemini-2.5-flash"
+                    "gemini-3.8-flash",
+                    "gemini-3.7-flash"
                 ]
 
                 response = None
@@ -497,11 +496,10 @@ if st.button("توليد الجذاذة الكاملة غير المختصرة �
                         continue
 
                 if response is None or not response.text:
-                    raise Exception(f"فشل الاتصال بالنماذج: {last_err}")
+                    raise Exception(f"فشل الاتصال بالنماذج (3.6 و 3.8): {last_err}")
 
                 raw_text = response.text.strip()
                 
-                # استخراج JSON بأمان حتى لو أحاطه بوسوم كود
                 if "```" in raw_text:
                     match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', raw_text)
                     if match:
@@ -540,7 +538,7 @@ if st.button("توليد الجذاذة الكاملة غير المختصرة �
 
                 word_buffer = create_word_jodada(jodada_full)
 
-                st.success(f"تم بنجاح إعداد الجذاذة الكاملة: الدرس {lesson_order} : {jodada_full['lesson_title']}")
+                st.success(f"تم بنجاح إعداد الجذاذة الكاملة عبر محرك 3.6/3.8: الدرس {lesson_order} : {jodada_full['lesson_title']}")
 
                 st.download_button(
                     label="تحميل الجذاذة الرسمية المسطرة الشاملة بصيغة Word (.docx)",
